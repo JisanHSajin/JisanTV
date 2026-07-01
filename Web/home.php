@@ -2,7 +2,8 @@
 // ============================================================
 // HOME PAGE - Channel Listing & Live TV Player
 // ============================================================
-// Optimized for fast loading with caching
+// Free channels are visible to everyone (no login required)
+// Premium channels require login AND active subscription
 // ============================================================
 
 session_start();
@@ -26,7 +27,10 @@ if ($session_manager->isLoggedIn()) {
     $user_id = $_SESSION['user_id'];
     $user_name = $_SESSION['user_name'] ?? '';
     
-    // Validate password
+    // ============================================================
+    // 2. VALIDATE PASSWORD
+    // ============================================================
+    
     $stmt = $conn->prepare("SELECT password FROM users WHERE id = ?");
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
@@ -46,7 +50,10 @@ if ($session_manager->isLoggedIn()) {
         exit;
     }
     
-    // Validate device
+    // ============================================================
+    // 3. VALIDATE DEVICE
+    // ============================================================
+    
     $device_manager = new DeviceManager($conn);
     $device_id = $device_manager->getDeviceFingerprint();
     $device_check = $conn->prepare("SELECT id FROM device_tokens WHERE user_id = ? AND device_id = ? AND is_active = 1");
@@ -60,7 +67,10 @@ if ($session_manager->isLoggedIn()) {
         exit;
     }
     
-    // Check subscription
+    // ============================================================
+    // 4. CHECK SUBSCRIPTION
+    // ============================================================
+    
     $stmt = $conn->prepare("SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active' AND expires_at >= CURDATE()");
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
@@ -69,11 +79,11 @@ if ($session_manager->isLoggedIn()) {
 }
 
 // ============================================================
-// 2. FETCH CHANNELS WITH CACHING
+// 5. FETCH CHANNELS WITH CACHING
 // ============================================================
 
 /**
- * Fetch M3U playlist with cache
+ * Fetch M3U playlist with cache for faster loading
  */
 function fetchM3U($url) {
     $cache_key = 'm3u_' . md5($url);
@@ -350,7 +360,7 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         .footer-social a:hover svg{fill:#00ffff;}
         .site-footer p{font-size:12px;color:#666;}
         
-        /* Prevent right-click */
+        /* Prevent selection */
         body{-webkit-touch-callout:none;-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;}
         
         /* Responsive */
@@ -414,7 +424,9 @@ if (stripos($user_agent, 'JisanTV') !== false ||
 </head>
 
 <body>
-    <!-- Header -->
+    <!-- ============================================================
+    HEADER
+    ============================================================ -->
     <header class="site-header">
         <div class="site-branding">
             <a href="home.php">
@@ -439,7 +451,9 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         </div>
     </header>
 
-    <!-- App Ad Banner -->
+    <!-- ============================================================
+    APP AD BANNER
+    ============================================================ -->
     <div class="app-ad-banner <?php echo $is_mobile_app ? 'mobile-app-hidden' : ''; ?>" id="mainAdBanner">
         <button class="close-ad" id="closeAdBtn" title="Close this ad">×</button>
         <div class="app-ad-content">
@@ -459,9 +473,11 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         </div>
     </div>
 
-    <!-- Main Layout -->
+    <!-- ============================================================
+    MAIN LAYOUT
+    ============================================================ -->
     <div class="main-layout">
-        <!-- Left: Player -->
+        <!-- Left: Video Player -->
         <div class="left-side">
             <div class="player-container" id="playerContainer">
                 <iframe id="playerFrame" src="player.php" allow="autoplay; fullscreen" allowfullscreen></iframe>
@@ -470,7 +486,7 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         
         <!-- Right: Channel List -->
         <div class="right-side">
-            <!-- Search -->
+            <!-- Search Bar -->
             <div class="search-box">
                 <input type="text" id="searchInput" placeholder="Search channels..." onkeyup="searchChannels()">
             </div>
@@ -478,7 +494,9 @@ if (stripos($user_agent, 'JisanTV') !== false ||
             <!-- Category Filter -->
             <div class="category-filter" id="categoryFilter"></div>
             
-            <!-- Free Channels -->
+            <!-- ============================================================
+            FREE CHANNELS
+            ============================================================ -->
             <h2 id="channels">📺 Free Channels <span class="free-badge">FREE</span></h2>
             
             <?php if(empty($free_channels)): ?>
@@ -499,7 +517,9 @@ if (stripos($user_agent, 'JisanTV') !== false ||
                 <?php endforeach; ?>
             <?php endif; ?>
             
-            <!-- Premium Channels -->
+            <!-- ============================================================
+            PREMIUM CHANNELS
+            ============================================================ -->
             <h2>⭐ Premium Channels <span class="premium-badge">PREMIUM</span></h2>
             
             <?php if(!$is_logged_in): ?>
@@ -538,7 +558,9 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         </div>
     </div>
 
-    <!-- Footer -->
+    <!-- ============================================================
+    FOOTER
+    ============================================================ -->
     <footer class="site-footer" id="footer">
         <div class="footer-social">
             <a href="https://www.facebook.com/jisanhsajin/" target="_blank">
@@ -560,7 +582,9 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         <p>© 2026 JisanTV | All Rights Reserved</p>
     </footer>
 
-    <!-- JavaScript -->
+    <!-- ============================================================
+    JAVASCRIPT
+    ============================================================ -->
     <script>
         // ============================================================
         // PLAY STREAM
@@ -618,14 +642,6 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         }
 
         // ============================================================
-        // DISABLE RIGHT CLICK
-        // ============================================================
-        document.addEventListener('contextmenu', function(e) {
-            e.preventDefault();
-            return false;
-        });
-
-        // ============================================================
         // APP AD BANNER
         // ============================================================
         document.addEventListener('DOMContentLoaded', function() {
@@ -646,6 +662,102 @@ if (stripos($user_agent, 'JisanTV') !== false ||
             }
             <?php endif; ?>
         });
+
+        // ============================================================
+        // SECURITY - DISABLE RIGHT CLICK & DEVTOOLS
+        // ============================================================
+        
+		(function() {
+    // Only apply anti-devtools for desktop browsers, not mobile apps
+    var isMobileApp = <?php echo $is_mobile_app ? 'true' : 'false'; ?>;
+    var isAndroid = /android/i.test(navigator.userAgent);
+    var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    var isMobile = isAndroid || isIOS || /mobile/i.test(navigator.userAgent);
+    
+    // Skip devtools protection for mobile apps and mobile devices
+    if (isMobileApp || isMobile) {
+        // Just disable context menu on mobile, keep it simple
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+        });
+        return; // Skip all other protections for mobile
+    }
+    
+    // Desktop-only protections
+    document.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        return false;
+    });
+    
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'F12') {
+            e.preventDefault();
+            return false;
+        }
+        if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C' || e.key === 'K')) {
+            e.preventDefault();
+            return false;
+        }
+        if (e.ctrlKey && (e.key === 'u' || e.key === 'U' || e.key === 's' || e.key === 'S')) {
+            e.preventDefault();
+            return false;
+        }
+        if (e.ctrlKey && (e.key === 'p' || e.key === 'P')) {
+            e.preventDefault();
+            return false;
+        }
+    });
+    
+    document.addEventListener('dragstart', function(e) {
+        e.preventDefault();
+        return false;
+    });
+    
+    // Only run devtools detection on desktop
+    var devtools = function() {
+        var start = performance.now();
+        debugger;
+        var end = performance.now();
+        if (end - start > 100) {
+            document.body.innerHTML = '<div style="text-align:center;padding:50px;background:#111;color:red;font-size:20px;"><h1>🚫 Access Denied</h1><p>Developer tools are not allowed on this site.</p><p>Please close devtools and refresh the page.</p></div>';
+            document.body.style.background = '#111';
+        }
+    };
+    
+    setInterval(devtools, 1000);
+    
+    if (window.console) {
+        var noop = function() {};
+        var methods = ['log', 'debug', 'info', 'warn', 'error', 'table', 'trace', 'dir', 'dirxml', 'group', 'groupCollapsed', 'groupEnd', 'time', 'timeEnd', 'profile', 'profileEnd'];
+        for (var i = 0; i < methods.length; i++) {
+            if (console[methods[i]]) console[methods[i]] = noop;
+        }
+    }
+    
+    if (window.self !== window.top) {
+        window.top.location = window.self.location;
+    }
+    
+    document.addEventListener('copy', function(e) { e.preventDefault(); return false; });
+    document.addEventListener('cut', function(e) { e.preventDefault(); return false; });
+    document.addEventListener('paste', function(e) { e.preventDefault(); return false; });
+    
+    document.body.style.userSelect = 'none';
+    document.body.style.webkitUserSelect = 'none';
+    document.body.style.msUserSelect = 'none';
+    
+    var checkDevToolsInterval = setInterval(function() {
+        var widthThreshold = window.outerWidth - window.innerWidth > 200;
+        var heightThreshold = window.outerHeight - window.innerHeight > 200;
+        if (widthThreshold || heightThreshold) {
+            clearInterval(checkDevToolsInterval);
+            document.body.innerHTML = '<div style="text-align:center;padding:50px;background:#111;color:red;font-size:20px;"><h1>🚫 Access Denied</h1><p>Developer tools detected. Please close them to continue.</p></div>';
+            document.body.style.background = '#111';
+            window.location.href = 'logout.php?msg=devtools_dimension';
+        }
+    }, 1500);
+})();
     </script>
 </body>
 </html>
