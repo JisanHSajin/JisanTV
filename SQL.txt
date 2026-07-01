@@ -1,0 +1,124 @@
+-- ============================================================
+-- JisanTV - Complete Database Schema
+-- ============================================================
+-- This file contains all table structures for the JisanTV
+-- application.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1. USERS TABLE
+-- Stores all user account information
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    google_id VARCHAR(255) NULL UNIQUE,
+    avatar VARCHAR(500) NULL,
+    otp VARCHAR(10) NULL,
+    otp_expires_at DATETIME NULL,
+    is_verified TINYINT(1) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_email (email),
+    INDEX idx_otp (otp),
+    INDEX idx_google_id (google_id)
+);
+
+-- ------------------------------------------------------------
+-- 2. SUBSCRIPTIONS TABLE
+-- Tracks user premium subscriptions
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    plan VARCHAR(20) NOT NULL,
+    expires_at DATE NOT NULL,
+    status ENUM('active', 'expired') DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_status (user_id, status),
+    INDEX idx_expires (expires_at)
+);
+
+-- ------------------------------------------------------------
+-- 3. PAYMENTS TABLE
+-- Records user payment transactions
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    trxid VARCHAR(100) NOT NULL,
+    amount INT NOT NULL,
+    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_status (user_id, status),
+    INDEX idx_trxid (trxid)
+);
+
+-- ------------------------------------------------------------
+-- 4. DEVICE TOKENS TABLE
+-- Manages authorized devices per user (max 3 devices)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS device_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    device_id VARCHAR(255) NOT NULL,
+    device_name VARCHAR(100) DEFAULT 'Unknown Device',
+    device_type VARCHAR(50) DEFAULT 'Unknown',
+    last_login DATETIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active TINYINT(1) DEFAULT 1,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_user_device (user_id, device_id),
+    INDEX idx_user_active (user_id, is_active),
+    INDEX idx_device (device_id)
+);
+
+-- ------------------------------------------------------------
+-- 5. SESSION TOKENS TABLE
+-- Stores "Remember Me" persistent login sessions (30 days)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS session_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    session_token VARCHAR(255) NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_token (session_token),
+    INDEX idx_expires (expires_at)
+);
+
+-- ============================================================
+-- TABLE RELATIONSHIPS
+-- ============================================================
+-- users.id → subscriptions.user_id (CASCADE DELETE)
+-- users.id → payments.user_id (CASCADE DELETE)
+-- users.id → device_tokens.user_id (CASCADE DELETE)
+-- users.id → session_tokens.user_id (CASCADE DELETE)
+--
+-- When a user is deleted, all related records are automatically removed
+-- ============================================================
+
+-- ============================================================
+-- OPTIONAL: Sample Data for Testing
+-- ============================================================
+-- Password for test user is 'test123'
+-- INSERT INTO users (name, email, password, is_verified) 
+-- VALUES ('Test User', 'test@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1);
+
+-- ============================================================
+-- INDEXES FOR BETTER PERFORMANCE
+-- ============================================================
+-- Uncomment these if you want to add additional indexes:
+-- ALTER TABLE users ADD INDEX idx_email (email);
+-- ALTER TABLE users ADD INDEX idx_otp (otp);
+-- ALTER TABLE subscriptions ADD INDEX idx_user_status (user_id, status);
+-- ALTER TABLE subscriptions ADD INDEX idx_expires (expires_at);
+-- ALTER TABLE payments ADD INDEX idx_user_status (user_id, status);
+-- ALTER TABLE payments ADD INDEX idx_trxid (trxid);
+-- ALTER TABLE device_tokens ADD INDEX idx_user_active (user_id, is_active);
+-- ALTER TABLE device_tokens ADD INDEX idx_device (device_id);
+-- ============================================================
