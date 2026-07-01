@@ -1,8 +1,6 @@
 <?php
 // ============================================================
-// VIDEO PLAYER - Fast Loading with Instant Playback
-// ============================================================
-// Optimized for speed - no black screen
+// VIDEO PLAYER
 // ============================================================
 
 session_start();
@@ -12,7 +10,7 @@ include "session_helper.php";
 include "device_helper.php";
 
 // ============================================================
-// 1. CHECK LOGIN STATUS (Fast)
+// 1. CHECK LOGIN STATUS
 // ============================================================
 
 $is_logged_in = false;
@@ -40,7 +38,7 @@ if ($session_manager->isLoggedIn()) {
         $is_logged_in = false;
     }
     
-    // Device check (quick)
+    // Device check
     if ($is_logged_in) {
         $device_manager = new DeviceManager($conn);
         $device_id = $device_manager->getDeviceFingerprint();
@@ -407,14 +405,50 @@ document.addEventListener('keydown', function(e) {
 });
 
 // ============================================================
-// 10. SECURITY (Minimal)
+// SECURITY - DISABLE RIGHT CLICK & DEVTOOLS
 // ============================================================
-
+// Disable right-click
 document.addEventListener('contextmenu', function(e) {
     e.preventDefault();
     return false;
 });
 
+// Disable keyboard shortcuts for devtools
+document.addEventListener('keydown', function(e) {
+    // F12
+    if (e.key === 'F12') {
+        e.preventDefault();
+        return false;
+    }
+    // Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C
+    if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) {
+        e.preventDefault();
+        return false;
+    }
+    // Ctrl+U (View Source)
+    if (e.ctrlKey && (e.key === 'u' || e.key === 'U')) {
+        e.preventDefault();
+        return false;
+    }
+    // Ctrl+S (Save Page)
+    if (e.ctrlKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        return false;
+    }
+});
+
+// Disable drag and drop
+document.addEventListener('dragstart', function(e) {
+    e.preventDefault();
+    return false;
+});
+
+// Disable text selection
+document.addEventListener('selectstart', function(e) {
+    e.preventDefault();
+    return false;
+});
+    
 console.log('JisanTV Player Ready');
 </script>
 </body>
