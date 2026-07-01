@@ -2,8 +2,7 @@
 // ============================================================
 // HOME PAGE - Channel Listing & Live TV Player
 // ============================================================
-// Free channels are visible to everyone (no login required)
-// Premium channels require login AND active subscription
+// Optimized for fast loading with caching
 // ============================================================
 
 session_start();
@@ -27,10 +26,7 @@ if ($session_manager->isLoggedIn()) {
     $user_id = $_SESSION['user_id'];
     $user_name = $_SESSION['user_name'] ?? '';
     
-    // ============================================================
-    // 2. VALIDATE PASSWORD (only for logged-in users)
-    // ============================================================
-    
+    // Validate password
     $stmt = $conn->prepare("SELECT password FROM users WHERE id = ?");
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
@@ -50,10 +46,7 @@ if ($session_manager->isLoggedIn()) {
         exit;
     }
     
-    // ============================================================
-    // 3. VALIDATE DEVICE (only for logged-in users)
-    // ============================================================
-    
+    // Validate device
     $device_manager = new DeviceManager($conn);
     $device_id = $device_manager->getDeviceFingerprint();
     $device_check = $conn->prepare("SELECT id FROM device_tokens WHERE user_id = ? AND device_id = ? AND is_active = 1");
@@ -67,10 +60,7 @@ if ($session_manager->isLoggedIn()) {
         exit;
     }
     
-    // ============================================================
-    // 4. CHECK SUBSCRIPTION (only for logged-in users)
-    // ============================================================
-    
+    // Check subscription
     $stmt = $conn->prepare("SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active' AND expires_at >= CURDATE()");
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
@@ -79,33 +69,59 @@ if ($session_manager->isLoggedIn()) {
 }
 
 // ============================================================
-// 5. FETCH CHANNELS FROM M3U PLAYLISTS
+// 2. FETCH CHANNELS WITH CACHING
 // ============================================================
 
 /**
- * Fetch M3U playlist from URL using cURL
+ * Fetch M3U playlist with cache
  */
 function fetchM3U($url) {
+    $cache_key = 'm3u_' . md5($url);
+    $cache_dir = sys_get_temp_dir() . '/jisantv_cache/';
+    
+    // Create cache directory if not exists
+    if (!is_dir($cache_dir)) {
+        mkdir($cache_dir, 0777, true);
+    }
+    
+    $cache_file = $cache_dir . $cache_key . '.cache';
+    $cache_time = 300; // 5 minutes cache
+    
+    // Return cached data if valid
+    if (file_exists($cache_file) && (time() - filemtime($cache_file) < $cache_time)) {
+        return file_get_contents($cache_file);
+    }
+    
+    // Fetch fresh data
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 8);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 4);
     $data = curl_exec($ch);
     curl_close($ch);
+    
+    // Cache the result
+    if ($data) {
+        file_put_contents($cache_file, $data);
+    }
+    
     return $data;
 }
 
 /**
- * Parse M3U content into channel array grouped by category
+ * Parse M3U content into channels
  */
 function parseM3U($data) {
     $channels = [];
     if (!$data) return $channels;
     
     $lines = preg_split("/\r\n|\n|\r/", $data);
-    for ($i = 0; $i < count($lines); $i++) {
+    $count = count($lines);
+    
+    for ($i = 0; $i < $count; $i++) {
         if (strpos($lines[$i], "#EXTINF") !== false) {
             preg_match('/tvg-logo="([^"]*)"/', $lines[$i], $logo);
             preg_match('/group-title="([^"]*)"/', $lines[$i], $group);
@@ -125,13 +141,11 @@ function parseM3U($data) {
     return $channels;
 }
 
-// Load free channels (always available - no login required)
+// Load channels
 $free_channels = parseM3U(fetchM3U(FREE_M3U_URL));
-
-// Load premium channels (only if user is logged in AND has subscription)
 $premium_channels = ($is_logged_in && $premium_active) ? parseM3U(fetchM3U(PREMIUM_M3U_URL)) : [];
 
-// Check if user is on mobile app
+// Check if mobile app
 $is_mobile_app = false;
 $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
 if (stripos($user_agent, 'JisanTV') !== false || 
@@ -147,16 +161,11 @@ if (stripos($user_agent, 'JisanTV') !== false ||
 <head>
     <title>JisanTV - Watch Live Channels</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://jisanhsajin.free.nf/wp-content/uploads/2025/11/cropped-Untitled-design-1-89x89.png">
     <link rel="shortcut icon" type="image/png" href="https://jisanhsajin.free.nf/wp-content/uploads/2025/11/cropped-Untitled-design-1-89x89.png">
-    <!-- Preconnect for faster loading -->
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="preconnect" href="https://jisanhsajin.neocities.org">
 
-    <!-- ============================================================
-    STYLES
-    ============================================================ -->
     <style>
         /* Reset & Base */
         *{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;}
@@ -172,12 +181,10 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         .site-nav a:hover,.header-right a:hover{color:#00cccc;}
         .header-right{display:flex;gap:15px;align-items:center;flex-wrap:wrap;}
         
-        /* ============================================================
-        MAIN LAYOUT - Player on Left (55%), Channels on Right (45%)
-        ============================================================ */
+        /* Main Layout */
         .main-layout{display:flex;gap:20px;padding:15px 20px;height:calc(100vh - 80px);min-height:500px;}
         
-        /* Left Side - Video Player (Bigger) */
+        /* Left Side - Player */
         .left-side{flex:0 0 55%;display:flex;justify-content:center;align-items:center;padding:5px;}
         .left-side .player-container{width:100%;height:100%;max-height:85vh;background:#000;border-radius:15px;overflow:hidden;border:1px solid #00ffff33;position:relative;aspect-ratio:16/9;}
         .player-container iframe{width:100%;height:100%;border:none;background:#000;display:block;}
@@ -223,7 +230,7 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         .premium-badge{display:inline-block;background:#ffd700;color:#000;font-size:9px;padding:2px 8px;border-radius:10px;font-weight:bold;margin-left:5px;}
         .free-badge{display:inline-block;background:#00ff88;color:#000;font-size:9px;padding:2px 8px;border-radius:10px;font-weight:bold;margin-left:5px;}
         
-        /* App Ad Banner Styles */
+        /* App Ad Banner */
         .app-ad-banner {
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             border: 1px solid #00ffff44;
@@ -346,9 +353,7 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         /* Prevent right-click */
         body{-webkit-touch-callout:none;-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;}
         
-        /* ============================================================
-        RESPONSIVE DESIGN
-        ============================================================ */
+        /* Responsive */
         @media(max-width:1024px){.left-side{flex:0 0 50%;}}
         @media(max-width:768px){
             .main-layout{flex-direction:column;padding:10px 12px;height:auto;min-height:auto;}
@@ -409,9 +414,7 @@ if (stripos($user_agent, 'JisanTV') !== false ||
 </head>
 
 <body>
-    <!-- ============================================================
-    HEADER
-    ============================================================ -->
+    <!-- Header -->
     <header class="site-header">
         <div class="site-branding">
             <a href="home.php">
@@ -436,9 +439,7 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         </div>
     </header>
 
-    <!-- ============================================================
-    APP AD BANNER - Always visible by default
-    ============================================================ -->
+    <!-- App Ad Banner -->
     <div class="app-ad-banner <?php echo $is_mobile_app ? 'mobile-app-hidden' : ''; ?>" id="mainAdBanner">
         <button class="close-ad" id="closeAdBtn" title="Close this ad">×</button>
         <div class="app-ad-content">
@@ -458,11 +459,9 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         </div>
     </div>
 
-    <!-- ============================================================
-    MAIN LAYOUT: Player (Left 55%) + Channel List (Right 45%)
-    ============================================================ -->
+    <!-- Main Layout -->
     <div class="main-layout">
-        <!-- Left: Video Player (Bigger) -->
+        <!-- Left: Player -->
         <div class="left-side">
             <div class="player-container" id="playerContainer">
                 <iframe id="playerFrame" src="player.php" allow="autoplay; fullscreen" allowfullscreen></iframe>
@@ -471,7 +470,7 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         
         <!-- Right: Channel List -->
         <div class="right-side">
-            <!-- Search Bar -->
+            <!-- Search -->
             <div class="search-box">
                 <input type="text" id="searchInput" placeholder="Search channels..." onkeyup="searchChannels()">
             </div>
@@ -479,9 +478,7 @@ if (stripos($user_agent, 'JisanTV') !== false ||
             <!-- Category Filter -->
             <div class="category-filter" id="categoryFilter"></div>
             
-            <!-- ============================================================
-            FREE CHANNELS - Visible to Everyone (No Login Required)
-            ============================================================ -->
+            <!-- Free Channels -->
             <h2 id="channels">📺 Free Channels <span class="free-badge">FREE</span></h2>
             
             <?php if(empty($free_channels)): ?>
@@ -502,13 +499,10 @@ if (stripos($user_agent, 'JisanTV') !== false ||
                 <?php endforeach; ?>
             <?php endif; ?>
             
-            <!-- ============================================================
-            PREMIUM CHANNELS - Requires Login + Subscription
-            ============================================================ -->
+            <!-- Premium Channels -->
             <h2>⭐ Premium Channels <span class="premium-badge">PREMIUM</span></h2>
             
             <?php if(!$is_logged_in): ?>
-                <!-- User is NOT logged in - Show Login Prompt -->
                 <div class="lockbox">
                     <h3>🔒 Login Required</h3>
                     <p>Please login or register to access premium channels.</p>
@@ -517,14 +511,12 @@ if (stripos($user_agent, 'JisanTV') !== false ||
                     </div>
                 </div>
             <?php elseif(!$premium_active): ?>
-                <!-- User IS logged in but NO active subscription -->
                 <div class="lockbox">
                     <h3>🔒 Premium Locked</h3>
                     <p>You need an active subscription to unlock premium channels.</p>
                     <a href="buy.php">Buy Premium Now →</a>
                 </div>
             <?php else: ?>
-                <!-- User IS logged in AND has active subscription -->
                 <?php if(empty($premium_channels)): ?>
                     <p style="text-align:center;color:#aaa;padding:20px;">No premium channels available at the moment.</p>
                 <?php else: ?>
@@ -546,9 +538,7 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         </div>
     </div>
 
-    <!-- ============================================================
-    FOOTER
-    ============================================================ -->
+    <!-- Footer -->
     <footer class="site-footer" id="footer">
         <div class="footer-social">
             <a href="https://www.facebook.com/jisanhsajin/" target="_blank">
@@ -570,22 +560,20 @@ if (stripos($user_agent, 'JisanTV') !== false ||
         <p>© 2026 JisanTV | All Rights Reserved</p>
     </footer>
 
-    <!-- ============================================================
-    JAVASCRIPT
-    ============================================================ -->
+    <!-- JavaScript -->
     <script>
-        /**
-         * Play a stream in the video player
-         */
+        // ============================================================
+        // PLAY STREAM
+        // ============================================================
         function playStream(url, channelName) {
             var frame = document.getElementById('playerFrame');
             frame.src = 'player.php?url=' + encodeURIComponent(url) + '&name=' + encodeURIComponent(channelName);
             document.querySelector(".player-container").scrollIntoView({ behavior: "smooth" });
         }
 
-        /**
-         * Filter channels by search input
-         */
+        // ============================================================
+        // SEARCH CHANNELS
+        // ============================================================
         function searchChannels() {
             let input = document.getElementById("searchInput").value.toLowerCase();
             document.querySelectorAll(".category-block").forEach(block => {
@@ -605,9 +593,9 @@ if (stripos($user_agent, 'JisanTV') !== false ||
             });
         }
 
-        /**
-         * Build category filter buttons on page load
-         */
+        // ============================================================
+        // CATEGORY FILTER
+        // ============================================================
         window.onload = function() {
             let categories = new Set();
             document.querySelectorAll(".category-block").forEach(block => {
@@ -620,9 +608,6 @@ if (stripos($user_agent, 'JisanTV') !== false ||
             });
         };
 
-        /**
-         * Filter channels by category
-         */
         function filterCategory(category, event) {
             document.querySelectorAll(".cat-btn").forEach(btn => btn.classList.remove("active"));
             event.target.classList.add("active");
@@ -632,29 +617,30 @@ if (stripos($user_agent, 'JisanTV') !== false ||
             });
         }
 
-        // Disable right-click context menu
+        // ============================================================
+        // DISABLE RIGHT CLICK
+        // ============================================================
         document.addEventListener('contextmenu', function(e) {
             e.preventDefault();
             return false;
         });
 
-        // ========== APP AD BANNER - Shows every time ==========
+        // ============================================================
+        // APP AD BANNER
+        // ============================================================
         document.addEventListener('DOMContentLoaded', function() {
             <?php if(!$is_mobile_app): ?>
             const banner = document.getElementById('mainAdBanner');
             const closeBtn = document.getElementById('closeAdBtn');
             
-            // Always show banner on every page load
             if (banner) {
                 banner.style.display = 'flex';
             }
             
-            // Only hide for current session when clicked
             if (closeBtn) {
                 closeBtn.addEventListener('click', function() {
                     if (banner) {
                         banner.style.display = 'none';
-                        // Do NOT store in localStorage - will show again on reload
                     }
                 });
             }
